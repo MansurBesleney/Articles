@@ -35,7 +35,7 @@ When configuring **Quartz**, you have two primary storage options, each with sig
 
 ### How ABP Simplifies Quartz Integration
 
-ABP handles Quartz configuration, dependency injection, and lifecycle management automatically. Developers define jobs using `QuartzBackgroundWorkerBase` and access services via `LazyServiceProvider`, following ABP’s standard conventions.
+ABP handles Quartz configuration, dependency injection, and lifecycle management automatically. Developers define jobs using `QuartzBackgroundWorkerBase` and access services via `ICachedServiceProvider`, following ABP's standard conventions and leveraging optimal service caching for background job scenarios.
 
 ### Benefits of the Integration
 
@@ -279,16 +279,22 @@ public class SubscriptionExpiryNotifierJob : QuartzBackgroundWorkerBase
 
     public override async Task Execute(IJobExecutionContext context)
     {
-        // Access ABP services through LazyServiceProvider
-        var clientAppService = LazyServiceProvider.LazyGetRequiredService<IClientAppService>();
-        var reminderLogAppService = LazyServiceProvider.LazyGetRequiredService<IReminderLogAppService>();
-        var emailService = LazyServiceProvider.LazyGetRequiredService<IEmailService>();
+        // Use ICachedServiceProvider for better performance and proper scoping
+        var serviceProvider = ServiceProvider.GetRequiredService<ICachedServiceProvider>();
+        
+        // These services will be cached and reused throughout the job execution
+        var clientAppService = serviceProvider.GetRequiredService<IClientAppService>();
+        var reminderLogAppService = serviceProvider.GetRequiredService<IReminderLogAppService>();
+        var emailService = serviceProvider.GetRequiredService<IEmailService>();
 
         Logger.LogInformation("🔄 Starting subscription expiry notification job...");
 
-        // Business logic implementation
+        // 1. Get clients expiring in 7 days
         var expiringClients = await clientAppService.GetExpiringClientsAsync(7);
         
+        Logger.LogInformation("📋 Found {Count} clients with expiring subscriptions", expiringClients.Count);
+
+        // 2. Process each client
         foreach (var client in expiringClients)
         {
             await ProcessClientAsync(client, emailService, reminderLogAppService);
@@ -303,7 +309,7 @@ public class SubscriptionExpiryNotifierJob : QuartzBackgroundWorkerBase
 
 **Constructor-Based Configuration**: Unlike traditional Quartz jobs that require external scheduling code, ABP's approach lets you define both the job and its schedule directly in the constructor. This keeps related configuration together and makes the job self-contained.
 
-**ABP Service Integration**: The `LazyServiceProvider` gives you access to any service in ABP's dependency injection container. This means you can use application services, repositories, domain services, or any other ABP component within your job without complex service location patterns.
+**ABP Service Integration**: The `ICachedServiceProvider` gives you access to any service in ABP's dependency injection container, enabling you to use application services, repositories, domain services, or any other ABP component with optimized caching and proper scoping.
 
 **Built-in Logging**: The `Logger` property provides access to ABP's logging infrastructure, automatically including context like correlation IDs and tenant information in multi-tenant applications.
 
@@ -523,9 +529,9 @@ You've successfully built a production-ready subscription reminder system that d
 ### What We Accomplished
 
 **✅ Enterprise-Grade Reliability**: PostgreSQL persistence ensures jobs survive restarts and deployments  
-**✅ ABP Best Practices**: Used `QuartzBackgroundWorkerBase`, `LazyServiceProvider`, and ABP's logging infrastructure  
+**✅ ABP Best Practices**: Used `QuartzBackgroundWorkerBase`, `ICachedServiceProvider`, and ABP's logging infrastructure  
 **✅ Real Business Value**: Automated subscription reminders with duplicate prevention and audit logging  
-**✅ Flexible Scheduling**: Explored cron expressions, trigger types, and misfire handling strategies  
+**✅ Flexible Scheduling**: Explored cron expressions, trigger types, and misfire handling strategies
 
 ### The Power of ABP + Quartz Integration
 
